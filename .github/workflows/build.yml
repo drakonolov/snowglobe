@@ -11,26 +11,35 @@ jobs:
 
       - name: Set up Android NDK
         uses: nttld/setup-ndk@v3
-        id: setup-ndk
         with:
           ndk-version: r26b
           add-to-path: true
 
-      - name: Download SDL2 Source
+      - name: Download and Build SDL2 for Android
         run: |
           curl -L https://github.com/libsdl-org/SDL/releases/download/release-2.30.2/SDL2-2.30.2.tar.gz -o sdl2.tar.gz
           tar -xzf sdl2.tar.gz
           mv SDL2-2.30.2 sdl2
+          
+          # Собираем статический архив SDL2 для Android через NDK CMake
+          cd sdl2
+          mkdir build_ndk && cd build_ndk
+          cmake .. \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-24 \
+            -DCMAKE_BUILD_TYPE=Release
+          make -j4
+          cd ../..
 
       - name: Compile Game to Android Shared Library (.so)
         run: |
-          # Компилируем C++ и ARM64 Neon код под Android с помощью NDK Clang
           $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang++ \
             -O3 -std=c++17 -shared -fPIC \
             main.cpp \
             -I./sdl2/include \
-            -L./sdl2/build/.libs \
-            -lSDL2 -llog -landroid -lGLESv2 -lEGL \
+            ./sdl2/build_ndk/libSDL2.a \
+            -llog -landroid -lGLESv2 -lEGL -Wl,--allow-shlib-undefined \
             -o libmain.so
 
       - name: Upload APK/Library Artifact
